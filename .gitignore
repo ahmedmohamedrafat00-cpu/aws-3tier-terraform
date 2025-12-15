@@ -1,0 +1,12 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+
+# Terraform lock file 
+# .terraform.lock.hcl
+
+# OS / Editor
+.vscode/
+.DS_Store
