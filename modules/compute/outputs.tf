@@ -16,3 +16,10 @@ output "alb_dns_name" {
 output "frontend_tg_arn" {
   value = aws_lb_target_group.frontend_tg.arn
 }
+output "frontend_instance_ids" {
+  value = aws_instance.frontend[*].id
+}
+output "backend_instance_ids" {
+  value = aws_instance.backend[*].id
+}
+
