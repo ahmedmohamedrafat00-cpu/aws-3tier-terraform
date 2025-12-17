@@ -24,7 +24,7 @@ module "compute" {
 
   db_host = module.database.db_endpoint
 
-  my_ip    = "197.196.248.139"
+  my_ip    = "197.196.248.139/32"
   key_name = "supplier-app"
 }
 
