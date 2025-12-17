@@ -21,4 +21,13 @@ variable "db_host" {
   description = "RDS endpoint"
   type        = string
 }
+variable "my_ip" {
+  description = "My public IP for SSH access"
+  type        = string
+}
+
+variable "key_name" {
+  description = "EC2 key pair name"
+  type        = string
+}
 

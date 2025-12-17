@@ -1,5 +1,5 @@
 #####################################
-# Data Source – AMI
+# AMI
 #####################################
 
 data "aws_ami" "amazon_linux" {
@@ -16,10 +16,10 @@ data "aws_ami" "amazon_linux" {
 # Security Groups
 #####################################
 
+# ALB SG
 resource "aws_security_group" "alb_sg" {
-  name        = "alb-sg"
-  description = "Allow HTTP traffic from internet"
-  vpc_id      = var.vpc_id
+  name   = "alb-sg"
+  vpc_id = var.vpc_id
 
   ingress {
     from_port   = 80
@@ -40,6 +40,31 @@ resource "aws_security_group" "alb_sg" {
   }
 }
 
+# Bastion SG
+resource "aws_security_group" "bastion_sg" {
+  name   = "bastion-sg"
+  vpc_id = var.vpc_id
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "bastion-sg"
+  }
+}
+
+# Frontend SG
 resource "aws_security_group" "frontend_sg" {
   name   = "frontend-sg"
   vpc_id = var.vpc_id
@@ -49,6 +74,13 @@ resource "aws_security_group" "frontend_sg" {
     to_port         = 80
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
+  }
+
+  ingress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
   }
 
   egress {
@@ -63,6 +95,7 @@ resource "aws_security_group" "frontend_sg" {
   }
 }
 
+# Backend SG
 resource "aws_security_group" "backend_sg" {
   name   = "backend-sg"
   vpc_id = var.vpc_id
@@ -72,6 +105,13 @@ resource "aws_security_group" "backend_sg" {
     to_port         = 8080
     protocol        = "tcp"
     security_groups = [aws_security_group.frontend_sg.id]
+  }
+
+  ingress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [aws_security_group.bastion_sg.id]
   }
 
   egress {
@@ -94,9 +134,8 @@ resource "aws_lb" "frontend_alb" {
   name               = "frontend-alb"
   load_balancer_type = "application"
   internal           = false
-
-  security_groups = [aws_security_group.alb_sg.id]
-  subnets         = var.public_subnets
+  subnets            = var.public_subnets
+  security_groups    = [aws_security_group.alb_sg.id]
 
   tags = {
     Name = "frontend-alb"
@@ -110,11 +149,7 @@ resource "aws_lb_target_group" "frontend_tg" {
   vpc_id   = var.vpc_id
 
   health_check {
-    path                = "/"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
+    path = "/"
   }
 
   tags = {
@@ -146,56 +181,8 @@ locals {
     systemctl enable nginx
     systemctl start nginx
 
-    cat << 'HTML' > /usr/share/nginx/html/index.html
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <title>3-Tier App</title>
-    </head>
-    <body>
-      <h1>Messages</h1>
-
-      <form id="msgForm">
-        <input type="text" id="message" required />
-        <button type="submit">Send</button>
-      </form>
-
-      <ul id="messages"></ul>
-
-      <script>
-        const backendUrl = "http://BACKEND_PRIVATE_IP:8080";
-
-        async function loadMessages() {
-          const res = await fetch(backendUrl + "/api/all");
-          const data = await res.json();
-          const list = document.getElementById("messages");
-          list.innerHTML = "";
-          data.forEach(m => {
-            const li = document.createElement("li");
-            li.innerText = m[1];
-            list.appendChild(li);
-          });
-        }
-
-        document.getElementById("msgForm").addEventListener("submit", async e => {
-          e.preventDefault();
-          const msg = document.getElementById("message").value;
-
-          await fetch(backendUrl + "/api/add", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ message: msg })
-          });
-
-          loadMessages();
-        });
-
-        loadMessages();
-      </script>
-    </body>
-    </html>
-    HTML
-    EOF
+    echo "<h1>Frontend is running</h1>" > /usr/share/nginx/html/index.html
+  EOF
 
   backend_user_data = <<-EOF
     #!/bin/bash
@@ -214,9 +201,9 @@ locals {
 
     db_config = {
         "host": os.environ.get("DB_HOST"),
-        "user": os.environ.get("DB_USER"),
-        "password": os.environ.get("DB_PASS"),
-        "database": os.environ.get("DB_NAME")
+        "user": "admin",
+        "password": "password123",
+        "database": "appdb"
     }
 
     @app.route("/health")
@@ -226,41 +213,31 @@ locals {
     @app.route("/api/add", methods=["POST"])
     def add_message():
         data = request.json
-        message = data.get("message")
-
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute(
-            "CREATE TABLE IF NOT EXISTS messages (id INT AUTO_INCREMENT PRIMARY KEY, message TEXT)"
-        )
-        cursor.execute("INSERT INTO messages (message) VALUES (%s)", (message,))
+        cursor.execute("CREATE TABLE IF NOT EXISTS messages (id INT AUTO_INCREMENT PRIMARY KEY, message TEXT)")
+        cursor.execute("INSERT INTO messages (message) VALUES (%s)", (data["message"],))
         conn.commit()
         cursor.close()
         conn.close()
+        return jsonify({"status": "added"})
 
-        return jsonify({"status": "message added"})
-
-    @app.route("/api/all", methods=["GET"])
-    def get_messages():
+    @app.route("/api/all")
+    def all_messages():
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        cursor.execute("SELECT id, message FROM messages")
+        cursor.execute("SELECT * FROM messages")
         rows = cursor.fetchall()
         cursor.close()
         conn.close()
         return jsonify(rows)
 
-    if __name__ == "__main__":
-        app.run(host="0.0.0.0", port=8080)
+    app.run(host="0.0.0.0", port=8080)
     APP
 
     export DB_HOST="${var.db_host}"
-    export DB_USER="admin"
-    export DB_PASS="password123"
-    export DB_NAME="appdb"
-
     python3 /home/ec2-user/app.py &
-    EOF
+  EOF
 }
 
 #####################################
@@ -268,21 +245,19 @@ locals {
 #####################################
 
 resource "aws_launch_template" "frontend_lt" {
-  name_prefix   = "frontend-lt-"
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
+  user_data     = base64encode(local.frontend_user_data)
 
   vpc_security_group_ids = [aws_security_group.frontend_sg.id]
-  user_data              = base64encode(local.frontend_user_data)
 }
 
 resource "aws_launch_template" "backend_lt" {
-  name_prefix   = "backend-lt-"
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = var.instance_type
+  user_data     = base64encode(local.backend_user_data)
 
   vpc_security_group_ids = [aws_security_group.backend_sg.id]
-  user_data              = base64encode(local.backend_user_data)
 }
 
 #####################################
@@ -326,4 +301,21 @@ resource "aws_lb_target_group_attachment" "frontend_attach" {
   target_group_arn = aws_lb_target_group.frontend_tg.arn
   target_id        = aws_instance.frontend[count.index].id
   port             = 80
+}
+
+#####################################
+# Bastion Host
+#####################################
+
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ami.amazon_linux.id
+  instance_type               = "t2.micro"
+  subnet_id                   = var.public_subnets[0]
+  associate_public_ip_address = true
+  key_name                    = var.key_name
+  vpc_security_group_ids      = [aws_security_group.bastion_sg.id]
+
+  tags = {
+    Name = "bastion-host"
+  }
 }

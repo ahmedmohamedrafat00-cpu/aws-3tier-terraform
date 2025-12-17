@@ -8,6 +8,13 @@ module "networking" {
   network_cidr = var.network_cidr
   azs          = var.availability_zones
 }
+module "database" {
+  source = "../../modules/database"
+
+  vpc_id        = module.networking.vpc_id
+  db_subnet_ids = module.networking.db_subnets
+  backend_sg_id = module.compute.backend_sg_id
+}
 module "compute" {
   source = "../../modules/compute"
 
@@ -16,12 +23,8 @@ module "compute" {
   private_subnets = module.networking.private_subnets
 
   db_host = module.database.db_endpoint
-}
-module "database" {
-  source = "../../modules/database"
 
-  vpc_id        = module.networking.vpc_id
-  db_subnet_ids = module.networking.db_subnets
-  backend_sg_id = module.compute.backend_sg_id
+  my_ip    = "197.196.248.139"
+  key_name = "supplier-app"
 }
 
