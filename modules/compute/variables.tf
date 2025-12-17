@@ -17,4 +17,8 @@ variable "instance_type" {
   type        = string
   default     = "t3.micro"
 }
+variable "db_host" {
+  description = "RDS endpoint"
+  type        = string
+}
 
