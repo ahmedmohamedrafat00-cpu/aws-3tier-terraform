@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>AWS 3-Tier App</title>
+</head>
+<body>
+  <h1>Messages</h1>
+
+  <form id="msgForm">
+    <input type="text" id="message" required />
+    <button type="submit">Send</button>
+  </form>
+
+  <ul id="messages"></ul>
+
+  <script>
+    const backendUrl = "http://BACKEND_PRIVATE_IP:8080";
+
+    async function loadMessages() {
+      const res = await fetch(backendUrl + "/api/all");
+      const data = await res.json();
+      const list = document.getElementById("messages");
+      list.innerHTML = "";
+      data.forEach(m => {
+        const li = document.createElement("li");
+        li.innerText = m[1];
+        list.appendChild(li);
+      });
+    }
+
+    document.getElementById("msgForm").addEventListener("submit", async e => {
+      e.preventDefault();
+      const msg = document.getElementById("message").value;
+
+      await fetch(backendUrl + "/api/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg })
+      });
+
+      loadMessages();
+    });
+
+    loadMessages();
+  </script>
+</body>
+</html>
