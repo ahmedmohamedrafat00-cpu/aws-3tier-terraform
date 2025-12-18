@@ -18,8 +18,9 @@ data "aws_ami" "amazon_linux" {
 
 # ALB SG
 resource "aws_security_group" "alb_sg" {
-  name   = "alb-sg"
-  vpc_id = var.vpc_id
+  name        = "alb-sg"
+  description = "Allow HTTP traffic from internet"
+  vpc_id      = var.vpc_id
 
   ingress {
     from_port   = 80
@@ -37,6 +38,10 @@ resource "aws_security_group" "alb_sg" {
 
   tags = {
     Name = "alb-sg"
+  }
+
+  lifecycle {
+    prevent_destroy = true
   }
 }
 
